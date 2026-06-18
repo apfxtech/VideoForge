@@ -2,3 +2,5 @@ __*__
 *.pyc
 .sources/
 .venv/
+video/
+*.mp4

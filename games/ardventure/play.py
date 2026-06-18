@@ -5,6 +5,8 @@ import sys
 import numpy as np
 import pygame
 
+import video
+
 SCALE = 8
 VIDEO_W, VIDEO_H = 1080, 1920
 VIEW_W = 128
@@ -515,45 +517,49 @@ def main():
 
     view_surf = pygame.Surface((VIEW_W, VIEW_H))
     st = State()
+    recorder = video.VideoRecorder(video.output_path(__file__), VIDEO_W, VIDEO_H, TARGET_FRAMERATE)
 
     running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                running = False
+    try:
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    running = False
 
-        keys = pygame.key.get_pressed()
-        frame_boolean = 1 if (st.frame_count % 32) < 16 else 0
+            keys = pygame.key.get_pressed()
+            frame_boolean = 1 if (st.frame_count % 32) < 16 else 0
 
-        update_movement(st, keys, frame_boolean)
+            update_movement(st, keys, frame_boolean)
 
-        if st.walking:
-            if st.frame_count % ANIMATION_SPEED == 0:
-                st.frame = (st.frame + 1) % 4
-        else:
-            st.frame = 1
+            if st.walking:
+                if st.frame_count % ANIMATION_SPEED == 0:
+                    st.frame = (st.frame + 1) % 4
+            else:
+                st.frame = 1
 
-        if st.frame_count % EYES_SPEED == 0:
-            st.global_frame = (st.global_frame + 1) % 80
+            if st.frame_count % EYES_SPEED == 0:
+                st.global_frame = (st.global_frame + 1) % 80
 
-        buf = np.zeros((VIEW_H, VIEW_W), dtype=np.uint8)
-        render(st, buf)
+            buf = np.zeros((VIEW_H, VIEW_W), dtype=np.uint8)
+            render(st, buf)
 
-        rgb = palette[buf]
-        pygame.surfarray.blit_array(view_surf, np.transpose(rgb, (1, 0, 2)))
+            rgb = palette[buf]
+            pygame.surfarray.blit_array(view_surf, np.transpose(rgb, (1, 0, 2)))
 
-        frame_surf.fill(COLOR_BG)
-        scaled = pygame.transform.scale(view_surf, (RENDER_W, RENDER_H))
-        frame_surf.blit(scaled, (MARGIN, MARGIN))
-        screen.blit(pygame.transform.scale(frame_surf, (win_w, win_h)), (0, 0))
-        pygame.display.flip()
+            frame_surf.fill(COLOR_BG)
+            scaled = pygame.transform.scale(view_surf, (RENDER_W, RENDER_H))
+            frame_surf.blit(scaled, (MARGIN, MARGIN))
+            recorder.write(frame_surf)
+            screen.blit(pygame.transform.scale(frame_surf, (win_w, win_h)), (0, 0))
+            pygame.display.flip()
 
-        st.frame_count += 1
-        clock.tick(TARGET_FRAMERATE)
-
-    pygame.quit()
+            st.frame_count += 1
+            clock.tick(TARGET_FRAMERATE)
+    finally:
+        recorder.close()
+        pygame.quit()
 
 if __name__ == "__main__":
     main()

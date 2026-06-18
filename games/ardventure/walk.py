@@ -8,6 +8,7 @@ import pygame
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import play
+import video
 
 GRASS = 0
 FLOWER = 2
@@ -129,43 +130,47 @@ def main():
     walk_frame = 1
     global_frame = 0
     frame_count = 0
+    recorder = video.VideoRecorder(video.output_path(__file__), play.VIDEO_W, play.VIDEO_H, play.TARGET_FRAMERATE)
 
     running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                running = False
+    try:
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    running = False
 
-        walking = not blocked_south(cam_y)
-        if walking:
-            cam_y += 1
-            if frame_count % play.ANIMATION_SPEED == 0:
-                walk_frame = (walk_frame + 1) % 4
-        else:
-            walk_frame = 1
-        if frame_count % play.EYES_SPEED == 0:
-            global_frame = (global_frame + 1) % 80
+            walking = not blocked_south(cam_y)
+            if walking:
+                cam_y += 1
+                if frame_count % play.ANIMATION_SPEED == 0:
+                    walk_frame = (walk_frame + 1) % 4
+            else:
+                walk_frame = 1
+            if frame_count % play.EYES_SPEED == 0:
+                global_frame = (global_frame + 1) % 80
 
-        buf = np.zeros((play.VIEW_H, play.VIEW_W), dtype=np.uint8)
-        draw_map(buf, cam_y)
-        draw_player(buf, walk_frame, global_frame)
-        draw_title(buf)
+            buf = np.zeros((play.VIEW_H, play.VIEW_W), dtype=np.uint8)
+            draw_map(buf, cam_y)
+            draw_player(buf, walk_frame, global_frame)
+            draw_title(buf)
 
-        rgb = palette[buf]
-        pygame.surfarray.blit_array(view_surf, np.transpose(rgb, (1, 0, 2)))
+            rgb = palette[buf]
+            pygame.surfarray.blit_array(view_surf, np.transpose(rgb, (1, 0, 2)))
 
-        frame_surf.fill(play.COLOR_BG)
-        scaled = pygame.transform.scale(view_surf, (play.RENDER_W, play.RENDER_H))
-        frame_surf.blit(scaled, (play.MARGIN, play.MARGIN))
-        screen.blit(pygame.transform.scale(frame_surf, (win_w, win_h)), (0, 0))
-        pygame.display.flip()
+            frame_surf.fill(play.COLOR_BG)
+            scaled = pygame.transform.scale(view_surf, (play.RENDER_W, play.RENDER_H))
+            frame_surf.blit(scaled, (play.MARGIN, play.MARGIN))
+            recorder.write(frame_surf)
+            screen.blit(pygame.transform.scale(frame_surf, (win_w, win_h)), (0, 0))
+            pygame.display.flip()
 
-        frame_count += 1
-        clock.tick(play.TARGET_FRAMERATE)
-
-    pygame.quit()
+            frame_count += 1
+            clock.tick(play.TARGET_FRAMERATE)
+    finally:
+        recorder.close()
+        pygame.quit()
 
 
 if __name__ == "__main__":
