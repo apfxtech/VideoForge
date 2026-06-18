@@ -17,6 +17,10 @@ WHEAT = 32
 ROCK = 31
 
 MAP_W = 8
+LOOP_SECONDS = 30
+LOOP_FRAMES = play.TARGET_FRAMERATE * LOOP_SECONDS
+LOOP_ROWS = 112
+LOOP_PIXELS = LOOP_ROWS * 16
 PLAYER_PX = (play.VIEW_W - 12) // 2
 PLAYER_PY = play.VIEW_H // 2 - 8
 PLAYER_COLS = (PLAYER_PX // 16, (PLAYER_PX + 11) // 16)
@@ -39,8 +43,9 @@ def _border(row, salt):
 
 @lru_cache(maxsize=4096)
 def gen_row(row):
-    left_w = _border(row, 0.0)
-    right_w = _border(row, 5.0)
+    loop_row = row % LOOP_ROWS
+    left_w = _border(loop_row, 0.0)
+    right_w = _border(loop_row, 5.0)
     line = [GRASS] * MAP_W
     for c in range(left_w):
         line[c] = WHEAT
@@ -51,7 +56,7 @@ def gen_row(row):
     for c in range(left_w, MAP_W - right_w):
         if PLAYER_COLS[0] <= c <= PLAYER_COLS[1]:
             continue
-        m = _rnd(row * 31 + c * 7) % 100
+        m = _rnd(loop_row * 31 + c * 7) % 100
         if m < 12:
             line[c] = FLOWER
         elif m < 20:
@@ -110,9 +115,16 @@ def draw_title(buf):
     buf[:th, :tw][m] = bit[:th, :tw][m]
 
 
+def frame_state(frame_count):
+    cam_y = frame_count * LOOP_PIXELS // LOOP_FRAMES
+    walk_frame = (cam_y // play.ANIMATION_SPEED) % 4
+    global_frame = frame_count * 32 // LOOP_FRAMES
+    return cam_y, walk_frame, global_frame
+
+
 def main():
     pygame.init()
-    pygame.display.set_caption("Arduventure — endless walk")
+    pygame.display.set_caption("Arduventure — 30s loop")
 
     n = max(1, play.WINDOW_SCALE)
     win_w, win_h = play.VIDEO_W // n, play.VIDEO_H // n
@@ -126,31 +138,19 @@ def main():
     else:
         palette = np.array([play.COLOR_BG, play.COLOR_INK], dtype=np.uint8)
 
-    cam_y = 0
-    walk_frame = 1
-    global_frame = 0
     frame_count = 0
     recorder = video.VideoRecorder(video.output_path(__file__), play.VIDEO_W, play.VIDEO_H, play.TARGET_FRAMERATE)
 
     running = True
     try:
-        while running:
+        while running and frame_count < LOOP_FRAMES:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     running = False
 
-            walking = not blocked_south(cam_y)
-            if walking:
-                cam_y += 1
-                if frame_count % play.ANIMATION_SPEED == 0:
-                    walk_frame = (walk_frame + 1) % 4
-            else:
-                walk_frame = 1
-            if frame_count % play.EYES_SPEED == 0:
-                global_frame = (global_frame + 1) % 80
-
+            cam_y, walk_frame, global_frame = frame_state(frame_count)
             buf = np.zeros((play.VIEW_H, play.VIEW_W), dtype=np.uint8)
             draw_map(buf, cam_y)
             draw_player(buf, walk_frame, global_frame)
