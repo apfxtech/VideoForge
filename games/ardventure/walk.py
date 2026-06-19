@@ -1,7 +1,5 @@
 import os
 import sys
-import math
-from functools import lru_cache
 
 import numpy as np
 import pygame
@@ -10,67 +8,29 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import play
 import video
 
-GRASS = 0
-FLOWER = 2
-DOTS = 5
-WHEAT = 32
-ROCK = 31
-
-MAP_W = 8
 LOOP_SECONDS = 30
 LOOP_FRAMES = play.TARGET_FRAMERATE * LOOP_SECONDS
-LOOP_ROWS = 112
-LOOP_PIXELS = LOOP_ROWS * 16
+ROAD_CHUNK_Y = 20
+ROAD_START_CHUNK_X = 1
+ROAD_CHUNKS = 14
+ROAD_START_X = ROAD_START_CHUNK_X * 96
+ROAD_CENTER_Y = ROAD_CHUNK_Y * 96 + 48
+LOOP_PIXELS = ROAD_CHUNKS * 96
 PLAYER_PX = (play.VIEW_W - 12) // 2
 PLAYER_PY = play.VIEW_H // 2 - 8
-PLAYER_COLS = (PLAYER_PX // 16, (PLAYER_PX + 11) // 16)
+PLAYER_CENTER_X = PLAYER_PX + 6
+ROAD_SOURCE_ROW = ROAD_CHUNK_Y * 6 + 2
+ROAD_SCREEN_X = PLAYER_CENTER_X - 8
+LOOP_TILES = ROAD_CHUNKS * 6
 
-
-def _rnd(n):
-    n &= 0xFFFFFFFF
-    n = (n * 2654435761) & 0xFFFFFFFF
-    n ^= n >> 13
-    n = (n * 1274126177) & 0xFFFFFFFF
-    n ^= n >> 16
-    return n
-
-
-def _border(row, salt):
-    v = math.sin(row * 0.18 + salt) + 0.5 * math.sin(row * 0.37 + salt * 1.7)
-    w = 1 + int((v + 1.5) / 3.0 * 3)
-    return max(1, min(3, w))
-
-
-@lru_cache(maxsize=4096)
-def gen_row(row):
-    loop_row = row % LOOP_ROWS
-    left_w = _border(loop_row, 0.0)
-    right_w = _border(loop_row, 5.0)
-    line = [GRASS] * MAP_W
-    for c in range(left_w):
-        line[c] = WHEAT
-    for c in range(right_w):
-        line[MAP_W - 1 - c] = WHEAT
-    for c in range(PLAYER_COLS[0], PLAYER_COLS[1] + 1):
-        line[c] = DOTS
-    for c in range(left_w, MAP_W - right_w):
-        if PLAYER_COLS[0] <= c <= PLAYER_COLS[1]:
-            continue
-        m = _rnd(loop_row * 31 + c * 7) % 100
-        if m < 12:
-            line[c] = FLOWER
-        elif m < 20:
-            line[c] = DOTS
-        elif m < 26:
-            line[c] = ROCK
-    return tuple(line)
+ROTATED_TILE_FIXUPS = {
+    35: 37,
+    37: 35,
+}
 
 
 def is_solid(wx, wy):
-    col = wx // 16
-    if col < 0 or col >= MAP_W:
-        return True
-    return gen_row(wy // 16)[col] >= 14
+    return play.get_solid(_source_x(wy), _source_y_for_screen_x(wx), 0)
 
 
 def blocked_south(cam_y):
@@ -79,14 +39,33 @@ def blocked_south(cam_y):
     return is_solid(ox + 12, oy + 16) or is_solid(ox + 3, oy + 16)
 
 
-def draw_map(buf, cam_y):
-    row = cam_y >> 4
-    while row * 16 - cam_y < play.VIEW_H:
-        screen_y = row * 16 - cam_y
-        line = gen_row(row)
-        for col in range(MAP_W):
-            play._blit_overwrite(buf, play.TILE_PIX[line[col]], col * 16, screen_y)
-        row += 1
+def _source_x(rotated_y):
+    return ROAD_START_X + (rotated_y % LOOP_PIXELS)
+
+
+def _source_y_for_screen_x(rotated_x):
+    source_row = ROAD_SOURCE_ROW + ((rotated_x - ROAD_SCREEN_X) // 16)
+    return source_row * 16
+
+
+def _rotated_tile(tile):
+    return ROTATED_TILE_FIXUPS.get(tile, tile)
+
+
+def draw_map(buf, cam_y, frame_boolean):
+    source_col = cam_y >> 4
+    while source_col * 16 - cam_y < play.VIEW_H:
+        screen_y = source_col * 16 - cam_y
+        source_x = ROAD_START_X + (source_col % LOOP_TILES) * 16
+        source_row = ROAD_SOURCE_ROW + ((-ROAD_SCREEN_X - 16) // 16)
+        while ROAD_SCREEN_X + (source_row - ROAD_SOURCE_ROW) * 16 < play.VIEW_W:
+            screen_x = ROAD_SCREEN_X + (source_row - ROAD_SOURCE_ROW) * 16
+            tile = play.get_tile_id(source_x, source_row * 16, frame_boolean)
+            tile = _rotated_tile(tile)
+            if 0 <= tile < play.TILE_COUNT:
+                play._blit_overwrite(buf, play.TILE_PIX[tile], screen_x, screen_y)
+            source_row += 1
+        source_col += 1
 
 
 def draw_player(buf, walk_frame, global_frame):
@@ -119,7 +98,8 @@ def frame_state(frame_count):
     cam_y = frame_count * LOOP_PIXELS // LOOP_FRAMES
     walk_frame = (cam_y // play.ANIMATION_SPEED) % 4
     global_frame = frame_count * 32 // LOOP_FRAMES
-    return cam_y, walk_frame, global_frame
+    frame_boolean = 1 if (frame_count % 32) < 16 else 0
+    return cam_y, walk_frame, global_frame, frame_boolean
 
 
 def main():
@@ -150,9 +130,9 @@ def main():
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     running = False
 
-            cam_y, walk_frame, global_frame = frame_state(frame_count)
+            cam_y, walk_frame, global_frame, frame_boolean = frame_state(frame_count)
             buf = np.zeros((play.VIEW_H, play.VIEW_W), dtype=np.uint8)
-            draw_map(buf, cam_y)
+            draw_map(buf, cam_y, frame_boolean)
             draw_player(buf, walk_frame, global_frame)
             draw_title(buf)
 
