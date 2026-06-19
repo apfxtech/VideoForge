@@ -29,6 +29,27 @@ ROTATED_TILE_FIXUPS = {
 }
 
 
+def _build_png_overlay(name):
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    if not os.path.isfile(path):
+        return None
+    rgba = play._load_png_rgba(path)
+    r = rgba[:, :, 0].astype(np.int32)
+    g = rgba[:, :, 1].astype(np.int32)
+    b = rgba[:, :, 2].astype(np.int32)
+    a = rgba[:, :, 3]
+
+    transparent = (a < 128) | ((g > 200) & (r < 60) & (b < 60))
+    mask = ~transparent
+    bit = ((r + g + b) > 384).astype(np.uint8)
+    if play.TITLE_INVERT:
+        bit = 1 - bit
+    return mask, bit
+
+
+FLIPPER = _build_png_overlay("flipper.png")
+
+
 def is_solid(wx, wy):
     return play.get_solid(_source_x(wy), _source_y_for_screen_x(wx), 0)
 
@@ -94,6 +115,20 @@ def draw_title(buf):
     buf[:th, :tw][m] = bit[:th, :tw][m]
 
 
+def draw_flipper(buf):
+    if FLIPPER is None:
+        return
+    mask, bit = FLIPPER
+    y = play.VIEW_H - mask.shape[0] - 40
+    x = (play.VIEW_W - mask.shape[1]) // 2
+    th = min(mask.shape[0], play.VIEW_H - y)
+    tw = min(mask.shape[1], play.VIEW_W - x)
+    if x < 0 or y < 0 or th <= 0 or tw <= 0:
+        return
+    m = mask[:th, :tw]
+    buf[y:y + th, x:x + tw][m] = bit[:th, :tw][m]
+
+
 def frame_state(frame_count):
     cam_y = frame_count * LOOP_PIXELS // LOOP_FRAMES
     walk_frame = (cam_y // play.ANIMATION_SPEED) % 4
@@ -135,6 +170,7 @@ def main():
             draw_map(buf, cam_y, frame_boolean)
             draw_player(buf, walk_frame, global_frame)
             draw_title(buf)
+            draw_flipper(buf)
 
             rgb = palette[buf]
             pygame.surfarray.blit_array(view_surf, np.transpose(rgb, (1, 0, 2)))
