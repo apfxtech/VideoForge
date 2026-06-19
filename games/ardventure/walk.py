@@ -122,7 +122,7 @@ def draw_flipper(buf):
     if FLIPPER is None:
         return
     mask, bit = FLIPPER
-    y = play.VIEW_H - mask.shape[0] - 40
+    y = play.VIEW_H - mask.shape[0] - 42
     x = (play.VIEW_W - mask.shape[1]) // 2
     th = min(mask.shape[0], play.VIEW_H - y)
     tw = min(mask.shape[1], play.VIEW_W - x)
