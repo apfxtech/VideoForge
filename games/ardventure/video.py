@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import tempfile
 
 import pygame
 
@@ -12,13 +13,18 @@ def output_path(script_path):
 
 
 class VideoRecorder:
-    def __init__(self, path, width, height, fps):
+    def __init__(self, path, width, height, fps, audio_path=None):
         if shutil.which("ffmpeg") is None:
             raise RuntimeError("ffmpeg is required to write mp4")
         self.path = os.path.abspath(path)
         self.width = width
         self.height = height
         self.fps = fps
+        self.audio_path = audio_path
+        self.video_path = self.path
+        if self.audio_path is not None:
+            fd, self.video_path = tempfile.mkstemp(prefix="videoforge-", suffix=".mp4")
+            os.close(fd)
         self.proc = subprocess.Popen(
             [
                 "ffmpeg",
@@ -42,7 +48,7 @@ class VideoRecorder:
                 "yuv420p",
                 "-movflags",
                 "+faststart",
-                self.path,
+                self.video_path,
             ],
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
@@ -66,3 +72,32 @@ class VideoRecorder:
         code = self.proc.wait()
         if code != 0:
             raise RuntimeError("ffmpeg failed with exit code %d" % code)
+        if self.audio_path is not None:
+            try:
+                code = subprocess.call(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        self.video_path,
+                        "-i",
+                        self.audio_path,
+                        "-shortest",
+                        "-c:v",
+                        "copy",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "128k",
+                        "-movflags",
+                        "+faststart",
+                        self.path,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                if code != 0:
+                    raise RuntimeError("ffmpeg failed to mux audio with exit code %d" % code)
+            finally:
+                if os.path.exists(self.video_path):
+                    os.unlink(self.video_path)

@@ -4,3 +4,5 @@ __*__
 .venv/
 video/
 *.mp4
+.DS_Store
+*.wav

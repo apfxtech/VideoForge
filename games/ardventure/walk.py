@@ -1,13 +1,16 @@
 import os
 import sys
+import tempfile
 
 import numpy as np
 import pygame
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import atm
 import play
 import video
 
+MUSIC_TRACK = "canyonSong"
 LOOP_SECONDS = 30
 LOOP_FRAMES = play.TARGET_FRAMERATE * LOOP_SECONDS
 BLINKS_PER_LOOP = 6
@@ -157,7 +160,25 @@ def main():
         palette = np.array([play.COLOR_BG, play.COLOR_INK], dtype=np.uint8)
 
     frame_count = 0
-    recorder = video.VideoRecorder(video.output_path(__file__), play.VIDEO_W, play.VIDEO_H, play.TARGET_FRAMERATE)
+    songs = atm.load_songs()
+    if MUSIC_TRACK and MUSIC_TRACK not in songs:
+        raise ValueError("unknown ATM music track: %s" % MUSIC_TRACK)
+
+    audio_path = None
+    preview_audio = None
+    if MUSIC_TRACK:
+        fd, audio_path = tempfile.mkstemp(prefix="ardventure-", suffix=".wav")
+        os.close(fd)
+        atm.write_wav(audio_path, songs[MUSIC_TRACK], seconds=LOOP_SECONDS)
+        preview_audio = atm.play_preview_file(audio_path)
+
+    recorder = video.VideoRecorder(
+        video.output_path(__file__),
+        play.VIDEO_W,
+        play.VIDEO_H,
+        play.TARGET_FRAMERATE,
+        audio_path=audio_path,
+    )
 
     running = True
     try:
@@ -188,7 +209,11 @@ def main():
             frame_count += 1
             clock.tick(play.TARGET_FRAMERATE)
     finally:
+        if preview_audio is not None:
+            preview_audio.stop()
         recorder.close()
+        if audio_path and os.path.exists(audio_path):
+            os.unlink(audio_path)
         pygame.quit()
 
 
