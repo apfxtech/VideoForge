@@ -10,6 +10,9 @@ import video
 
 LOOP_SECONDS = 30
 LOOP_FRAMES = play.TARGET_FRAMERATE * LOOP_SECONDS
+BLINKS_PER_LOOP = 6
+BLINK_PERIOD_FRAMES = LOOP_FRAMES // BLINKS_PER_LOOP
+BLINK_PHASE_FRAMES = BLINK_PERIOD_FRAMES // 2
 ROAD_CHUNK_Y = 20
 ROAD_START_CHUNK_X = 1
 ROAD_CHUNKS = 14
@@ -132,7 +135,7 @@ def draw_flipper(buf):
 def frame_state(frame_count):
     cam_y = frame_count * LOOP_PIXELS // LOOP_FRAMES
     walk_frame = (cam_y // play.ANIMATION_SPEED) % 4
-    global_frame = frame_count * 32 // LOOP_FRAMES
+    global_frame = ((frame_count + BLINK_PHASE_FRAMES) % BLINK_PERIOD_FRAMES) * 32 // BLINK_PERIOD_FRAMES
     frame_boolean = 1 if (frame_count % 32) < 16 else 0
     return cam_y, walk_frame, global_frame, frame_boolean
 
